@@ -161,7 +161,7 @@
          - 객체를 생성하고, 연관관계를 맺어주는 별도의 조립, 설정자가 필요
          - 이것이 바로 스프링
 
-  3. LSP (리스코프 치완 원칙)
+  3. LSP (리스코프 치환 원칙)
 
      - 프로그램의 객체는 프로그램의 정확성을 깨뜨리지 않으면서 하위 타입의 인스턴스로 바꿀 수 있어야 함
      - 다형성에서 하위 클래스는 인터페이스 규약을 다 지켜야 한다는 것, 다형성을 지원하기 위한 원칙
@@ -234,6 +234,26 @@
     - 인터페이스를 도입하면 추상화라는 비용이 발생
     - 기능을 확장할 가능성이 없다면, 구체 클래스를 직접 사용하고, 향후 꼭 필요할 때 리팩터링해서 인터페이스를 도입하는 것도 방법
       - 이 역시 경험
+
+
+
+
+
+## 스프링 프로젝트 생성
+
+- [springboot](https://start.spring.io)
+  - Gradle Project/Java/안정적인 최신 버젼(SNAPSHOT이나 M2가 없는 것) 선택
+  - Group, Artifact 입력하고, Packaging은 jar, Java는 11 선택
+  - Dependency 추가하고 Generate 눌러 압축파일 다운
+  - 압축 풀고 build.gradle을 IDE에서 프로젝트로 열기
+  - build.gradle에서 설정 확인 가능
+    - build.gradle에서 설정 변경시 코끼리 버튼 눌러줘야 적용됨
+  - Preference에서 gradle 검색 후, Build and run과 Run tests using을 Gradle(Defalut)에서 IntelliJ로 바꾸기
+    - Gradle로 돌리면 느림
+
+## 스프링 프로젝트 실행
+
+- src-main-java-{group}.{artifact}-{artifact}Application 실행
 
 
 
