@@ -75,9 +75,9 @@
 
   - 다형성으로 인터페이스를 구현한 객체를 실행 시점에 유연하게 변경할 수 있음
 
-    - MemberService가 인터페이스인 MemberRepository의 save 메서드를 호출
+    - ```MemberService```가 인터페이스인 ```MemberRepository```의 ```save``` 메서드를 호출
 
-    - MemberRepository의 구현체인 MemoryMemberRepository와, JdbcMemberRepository 모두 사용 가능
+    - ```MemberRepository```의 구현체인 ```MemoryMemberRepository```와, ```JdbcMemberRepository``` 모두 사용 가능
 
       ```Java
       public class memberService {
@@ -154,7 +154,7 @@
 
      - 문제점
 
-       - MemberService 클라이언트가 구현 클래스를 직접 선택
+       - ```MemberService``` 클라이언트가 구현 클래스를 직접 선택
        - 구현 객체를 변경하려면 클라이언트 코드를 변경해야 함
        - 분명 다형성을 사용했지만, OCP 원칙을 지킬 수 없음
        - 이 문제를 어덯게 해결할까?
@@ -191,9 +191,9 @@
 
        - 구현체에 의존하면 변경이 아주 어려워 짐
 
-     - 그런데 OCP에서 설명한 MemberService는 인터페이스에 의존하지만, 동시에 구현 클래스에도 의존함
+     - 그런데 OCP에서 설명한 ```MemberService```는 인터페이스에 의존하지만, 동시에 구현 클래스에도 의존함
 
-       - MemberService 클라이언트가 구현 클래스를 직접 선택
+       - ```MemberService``` 클라이언트가 구현 클래스를 직접 선택
 
          ```java
          public class memberService {
@@ -271,7 +271,7 @@
 
   - 프로그램의 제어 흐름에 대한 권한은 모두 AppConfig가 가져감
 
-    - OrderServiceImpl은 필요한 인터페이스들을 호출하지만, 어떤 구현 객체들이 실행될지 모른채로, 자신의 로직만 실행
+    - ```OrderServiceImpl```은 필요한 인터페이스들을 호출하지만, 어떤 구현 객체들이 실행될지 모른채로, 자신의 로직만 실행
 
       ```java
       public class OrderServiceImpl implements OrderService{
@@ -302,7 +302,7 @@
 
 ### 의존관계 주입 DI (Dependency Injection)
 
-- OrderServiceImple은 MemberRepository와 DiscountPolicy 인터페이스에 의존함
+- ```OrderServiceImple```은 ```MemberRepository```와 ```DiscountPolicy``` 인터페이스에 의존함
 
   - 그러나 어떤 구현 객체가 사용될지는 모름
 
@@ -310,7 +310,7 @@
 
   - 정적인 클래스 의존 관계
 
-    - 클래스가 사용하는 import 코드만 보고 의존관계를 쉽게 판단 가능
+    - 클래스가 사용하는 코드만 보고 의존관계를 쉽게 판단 가능
 
     - 애플리케이션을 실행하지 않아도 분석 가능
 
@@ -328,7 +328,7 @@
       }
       ```
 
-      - 그런데 이러한 클래스 의존관계 만으로는 실제 어떤 객체가 OrderServiceImpl에 주입 될지 알 수 없음
+      - 그런데 이러한 클래스 의존관계 만으로는 실제 어떤 객체가 ```OrderServiceImpl```에 주입 될지 알 수 없음
 
     - 동적인 객체 인스턴스 의존 관계
 
@@ -356,10 +356,10 @@
 
       - 애플리케이션 실행 시점(런타임)에 외부에서 실제 구현 객체를 생성하고, 클라이언트에 전달해서 클라이언트와 서버의 실제 의존 관계가 연결되는 것을 **의존 관계 주입**이라고 함
         - 객체 인스턴스를 생성하고, 그 참조값을 전달해서 연결됨
-          - OrderServiceImpl에 MemoryMemberRepository와 RateDiscountPolicy의 참조값을 연결
+          - ```OrderServiceImpl```에 ```MemoryMemberRepository```와 ```RateDiscountPolicy```의 참조값을 연결
       - 의존 관계 주입을 사용하면, 클라이언트 코드를 변경하지 않고 클라이언트가 호출하는 대상의 타입 인스턴스를 변경할 수 있음
       - 의존 관계 주입을 사용하면, 정적인 클래스 의존 관계를 변경하지 않고, 동적인 객체 인스턴스 의존 관계를 쉽게 변경할 수 있음
-        - 클라이언트 코드에 손대지 않고 FixDiscountPolicy를 , RateDiscountPolicy로 쉽게 바꿀 수 있음
+        - 클라이언트 코드에 손대지 않고 ```FixDiscountPolicy```를 , ```RateDiscountPolicy```로 쉽게 바꿀 수 있음
 
 
 
@@ -370,6 +370,74 @@
 - 또는 어셈블러, 오브젝트 팩토리 등으로 부르기도 함
 
 
+
+## 스프링 컨테이너
+
+- ```ApplicationContext```를 스프링 컨테이너라 함
+
+- 기존에는 개발자가 AppConfig를 통해 객체를 생성하고 DI를 했지만, 이제부터는 스프링 컨테이너를 사용함
+
+- 스프링 컨테이너는 ```@Configuration```이 붙은 AppConfig를 설정(구성) 정보로 사용
+
+  - 여기서 ```@Bean```이 붙은 메서드를 모두 호출해서 반환된 객체를 스프링 컨테이너에 등록
+
+  - 이렇게 스프링 컨테이너에 등록된 객체를 스프링 빈이라고 함
+
+  - 기본적으로 스프링 빈은 ```@Bean```이 붙은 메서드의 명을 스프링 빈의 이름으로 사용
+
+    ```java
+    @Configuration
+    public class AppConfig {
+        @Bean
+        public MemberService memberService() {
+            return new MemberServiceImpl(memberRepository());
+        }
+        @Bean
+        public DiscountPolicy discountPolicy() {
+            return new RateDiscountPolicy();
+        }
+        @Bean
+        public MemoryMemberRepository memberRepository() {
+            return new MemoryMemberRepository();
+        }
+        @Bean
+        public OrderService orderService() {
+            return new OrderServiceImpl(memberRepository(), discountPolicy());
+        }
+    }
+    ```
+
+       - 다음과 같이 스프링 빈의 이름 변경 가능하지만, 관례적으로 사용 자제
+
+         ```java
+         @Bean(name="memberService2")
+         public MemberService memberService() {
+             return new MemberServiceImpl(memberRepository());
+         }
+         ```
+
+         
+
+         
+
+- 이전에는 개발자가 필요한 객체를 AppConfig를 통해 직접 조회했지만, 이제부터는 스프링 컨테이너를 통해 필요한 스프링 빈(객체)를 찾아야 함
+
+  - 스프링 빈은 ```applicationContext.getBean()``` 메서드를 이용해서 찾을 수 있음
+
+    ```java
+    public class MemberApp {
+        public static void main(String[] args) {
+            ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class);
+            MemberService memberService = applicationContext.getBean("memberService", MemberService.class);
+            
+    		...
+        }
+    }
+    ```
+
+    
+
+- 기존에는 개발자가 직접 자바코드로 모든 것을 했다면, 이제는 스프링 컨테이너에 객체를 스프링 빈으로 등록하고, 스프링 컨테이너에서 스프링 빈을 찾아서 사용하도록 변경됨
 
 
 
