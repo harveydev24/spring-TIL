@@ -441,6 +441,64 @@
 
 
 
+## 스프링 컨테이너 생성
+
+```java
+ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class)
+```
+
+- ```ApplicationContext```는 인터페이스이며, 스프링 컨테이너라 함
+  - XML 기반으로도 만들 수 있고, 어노테이션 기반의 자바 설정 클래스로도 만들 수 있음
+  - 요즘엔 주로 어노테이션 기반을 사용
+
+### 스프링 컨테이너의 생성 과정
+
+1. 스프링 컨테이너 생성
+
+   ```java
+   ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class)
+   ```
+
+   - 스프링 컨테이너를 생성할 때는 구성 정보(AppConfig.class)를 지정해주어야 함
+
+2. 스프링 빈 등록
+
+   - 스프링 컨테이너는 파라미터로 넘어온 설정 클래스 정보를 사용해서 스프링 빈을 등록
+     - ```@Bean```이 붙은 메서드를 호출하고 반환된 객체를 스프링 빈 저장소에 넣음
+     - 빈 저장소에는 빈 이름과 빈 객체가 저장됨
+   - **주의: 빈 이름은 항상 다른 이름을 부여해야 함**
+
+3. 스프링 빈 의존 관계 설정
+
+   ```java
+   @Configuration
+   public class AppConfig {
+       @Bean
+       public MemberService memberService() {
+           return new MemberServiceImpl(memberRepository());
+       }
+       @Bean
+       public DiscountPolicy discountPolicy() {
+           return new RateDiscountPolicy();
+       }
+       @Bean
+       public MemoryMemberRepository memberRepository() {
+           return new MemoryMemberRepository();
+       }
+       @Bean
+       public OrderService orderService() {
+           return new OrderServiceImpl(memberRepository(), discountPolicy());
+       }
+   }
+   ```
+
+   - 스프링 컨테이너는 설정 정보를 참고해서 의존 관계를 주입(DI) 함
+   - 참고
+     - 스프링은 빈을 생성하고, 의존관계를 주입하는 단계가 나누어져 있음
+     - 그런데 위의 예시처럼 자바 코드로 스프링 빈을 등록하면, 생성자를 호출하면서 의존 관계 주입도 한 번에 처리됨
+     - 여기서는 이해를 돕기 위해 개념적으로 나누어 설명한 것
+     - 자세한 것은 의존 관계 자동 주입에서 다시 보기
+
 
 
 
