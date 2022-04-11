@@ -501,6 +501,198 @@ ApplicationContext applicationContext = new AnnotationConfigApplicationContext(A
 
 
 
+## 스프링 빈 조회
+
+- 실무에서는 빈을 조회할 일이 거의 없음
+
+- 스프링 컨테이너에서 스프링 빈을 찾는 가장 기본적인 조회 방법
+
+  - ```ac.getBean(빈이름, 타입)```
+
+  - ```ac.getBean(타입)```
+
+  - 조회 대상 스프링 빈이 없으면 예외 발생
+
+    ```java
+    public class ApplicationContextBasicFindTest {
+    
+        AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+    
+        @Test
+        @DisplayName("빈 이름으로 조회")
+        void findBeanByName() {
+            MemberService memberService = ac.getBean("memberService", MemberService.class);
+            assertThat(memberService).isInstanceOf(MemberServiceImpl.class);
+        }
+    
+        @Test
+        @DisplayName("이름 없이 타입으로 조회")
+        void findBeanByType() {
+            MemberService memberService = ac.getBean(MemberService.class);
+            assertThat(memberService).isInstanceOf(MemberServiceImpl.class);
+        }
+    
+        @Test
+        @DisplayName("구체 타입으로 조회")
+        // 구현에 의존하기 때문에 좋은 코드가 아님. 
+        void findBeanByName2() {
+            MemberService memberService = ac.getBean("memberService", MemberServiceImpl.class);
+            assertThat(memberService).isInstanceOf(MemberServiceImpl.class);
+        }
+    
+        @Test
+        @DisplayName("빈 이름으로 조회X")
+        void findBeanByNameX() {
+            // 람다함수가 실행되면 왼쪽의 에러가 발생해야함
+            assertThrows(NoSuchBeanDefinitionException.class, () -> ac.getBean("xxxxx", MemberService.class));
+        }
+    }
+    ```
+
+    - 타입으로 조회시 같은 타입의 스프링 빈이 둘 이상이면 오류가 발생함
+
+      - 이 때는 빈 이름을 지정해줌
+
+      - ```ac.getBeansOfType(타입)```으로 해당 타입의 모든 빈을 조회할 수 있음
+
+        ```java
+        public class ApplicationContextSameBeanFindTest {
+        
+            AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(SameBeanConfig.class);
+        
+            @Test
+            @DisplayName("타입으로 조회시 같은 타입이 둘 이상 있으면, 중복 오류 발생")
+            void findBeanByTypeDuplicate() {
+                assertThrows(NoUniqueBeanDefinitionException.class, ()->ac.getBean(MemberRepository.class));
+            }
+            
+            @Test
+            @DisplayName("타입으로 조회시 같은 타입이 둘 이상 있으면, 빈 이름을 지정해주면 됨")
+            void findBeanByName() {
+                MemberRepository memberRepository = ac.getBean("memberRepository1", MemberRepository.class);
+                assertThat(memberRepository).isInstanceOf(MemberRepository.class);
+            }
+        
+            @Test
+            @DisplayName("특정 타입을 모두 조회")
+            void findAllBeanByType() {
+                Map<String, MemberRepository> beansOfType = ac.getBeansOfType(MemberRepository.class);
+                assertThat(beansOfType.size()).isEqualTo(2);
+            }
+        
+            @Configuration
+            static class SameBeanConfig {
+                @Bean
+                public MemberRepository memberRepository1() {
+                    return new MemoryMemberRepository();
+                }
+        
+                @Bean
+                public MemberRepository memberRepository2() {
+                    return new MemoryMemberRepository();
+                }
+            }
+        }
+        ```
+
+
+
+- 상속 관계 조회
+
+  - 부모 타입으로 조회하면, 자식 타입도 함께 조회됨
+
+    - 모든 자바 객체의 최고 부모인 ```Object```로 조회하면, 모든 스프링 빈을 조회함
+
+    ```java
+    public class ApplicationContextExtendsFindTest {
+        AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(TestConfig.class);
+    
+        @Test
+        @DisplayName("부모 타입으로 조회시, 자식이 둘 이상 있으면, 중복 오류 발생")
+        void findBeanByParentTypeDuplicate() {
+            assertThrows(NoUniqueBeanDefinitionException.class, ()->ac.getBean(DiscountPolicy.class));
+        }
+    
+        @Test
+        @DisplayName("부모 타입으로 조회시, 자식이 둘 이상 있으면, 빈 이름을 지정하면 됨")
+        void findBeanByParentTypeBeanName() {
+            DiscountPolicy rateDiscountPolicy = ac.getBean("rateDiscountPolicy",DiscountPolicy.class);
+            assertThat(rateDiscountPolicy).isInstanceOf(RateDiscountPolicy.class);
+        }
+    
+        @Test
+        @DisplayName("특정 하위 타입으로 조회")
+        void findBeanBySubType() {
+            RateDiscountPolicy bean = ac.getBean(RateDiscountPolicy.class);
+            assertThat(bean).isInstanceOf(RateDiscountPolicy.class);
+        }
+    
+        @Test
+        @DisplayName("부모 타입으로 모두 조회")
+        void findBeanByParentType() {
+            Map<String, DiscountPolicy> beansOfType = ac.getBeansOfType(DiscountPolicy.class);
+            assertThat(beansOfType.size()).isEqualTo(2);
+        }
+    
+        @Configuration
+        static class TestConfig {
+            @Bean
+            public DiscountPolicy rateDiscountPolicy() {
+                return new RateDiscountPolicy();
+            }
+    
+            @Bean
+            public DiscountPolicy fixDiscountPolicy() {
+                return new FixDiscountPolicy();
+            }
+        }
+    }
+    ```
+
+
+
+## BeanFactory와 ApplicationContext
+
+### BeanFactory
+
+- 스프링 컨테이너의 최상위 인터페이스
+- 스프링 빈을 관리하고 조회하는 역할 담당
+  - ```getBean()```
+- 지금까지 우리가 사용했던 대부분의 기능은 ```BeanFactory```가 제공
+
+
+
+### ApplicationContext
+
+- BeanFactory를 상속하는 인터페이스
+- 빈을 관리하고 조회하는 기능을 ```BeanFactory```가 제공해주는데, 굳이 ```ApplicationContext```를 쓰는 이유
+  - 애플리케이션을 개발할 때는 빈을 관리하고 조회하는 기능은 물론이고, 수 많은 부가 기능 필요
+  - ```ApplicationContext```는 이 수 많은 부가기능과 관련된 인터페이스 또한 상속함
+    - ```EnvironmentCapable, MessageSource, ApplicationEventPublisher, ResourceLoader, ...```
+
+
+
+### 정리
+
+- ```ApplicationContext```는 ```BeanFactory```의 기능을 상속받음
+- ```ApplicationContext```는 빈 관리 기능 + 편리한 부가 기능을 제공
+- ```BeanFactory```를 직접 사용할 일은 거의 없고, 대부분 ```ApplicationContext```를 사용
+- ```BeanFactory```나 ```ApplicationContext```를 스프링 컨테이너라 함
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+
+
 
 
 
