@@ -681,6 +681,193 @@ ApplicationContext applicationContext = new AnnotationConfigApplicationContext(A
 
 
 
+## 스프링의 다양한 설정 형식 지원
+
+- 스프링 컨테이너는 다양한 형식의 설정 정보를 받아들일 수 있게 유연하게 설계됨
+
+  - 어노테이션 기반 자바 코드 설정
+
+    ```java	
+    ApplicationContext applicationContext = new AnnotationConfigApplicationContext(AppConfig.class)
+    ```
+
+  - XML 설정
+
+    - 최근에는 스프링 부트를 많이 사용하면서 XML 기반의 설정은 잘 사용하지 않음
+
+    - 아직 많은 레거시 프로젝트들이 XML로 설정되어 있음
+
+    - XML을 사용하면 컴파일 없이 빈 설정 정보를 변경할 수 있다는 장점이 있음
+
+      ```xml
+      <?xml version="1.0" encoding="UTF-8"?>
+      <beans xmlns="http://www.springframework.org/schema/beans"
+             xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+             xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd">
+          <bean id="memberService" class="hello.core.member.MemberServiceImpl" >
+              <constructor-arg name="memberRepository" ref="memberRepository" />
+          </bean>
+      
+          <bean id="memberRepository" class="hello.core.member.MemoryMemberRepository" />
+      
+          <bean id="orderService" class="hello.core.order.OrderServiceImpl" >
+              <constructor-arg name="memberRepository" ref="memberRepository" />
+              <constructor-arg name="discountPolicy" ref="discountPolicy" />
+          </bean>
+      
+          <bean id="discountPolicy" class="hello.core.discount.RateDiscountPolicy" />
+      </beans>
+      ```
+
+      ```java
+      public class XmlAppContext {
+          @Test
+          void xmlAppContext() {
+              ApplicationContext ac = new GenericXmlApplicationContext("appConfig.xml");
+              MemberService memberService = ac.getBean("memberService", MemberService.class);
+              assertThat(memberService).isInstanceOf(MemberService.class);
+          }
+      }
+      ```
+
+
+
+## 스프링 빈 설정 메타 정보
+
+- 스프링은 ```BeanDefinition```이라는 추상화를 통해 다양한 설정 형식을 지원
+- 역할과 구현을 개념적으로 나눔
+  - XML/자바 코드를 읽어서 ```BeanDefinition```을 만듦
+  - 스프링 컨테이너는 XML인지, 자바 코드인지 몰라도 됨
+- ```BeanDefinition```을 빈 설정 메타 정보라 함
+- 스프링 컨테이너는 이 메타 정보를 기반으로 스프링 빈 생성
+  - ```AnnotationConfigApplicationContext```는 ```AnnotatedBeanDefinitionReader```를 사용해서 ```AppConfig.class```를 읽고 ```BeanDefinition```을 만듦
+  - ```GenerixXmlApplicationContext```는 ```XmlDefinitionReader```를 사용해서 ```appConfig.xml``` 설정 정보를 읽고 ```BeanDefinition```을 만듦
+
+
+
+## 싱글톤 컨테이너
+
+- 스프링 없는 순수한 DI 컨테이너인 ```AppConfig```는 요청을 할 때 마다 객체를 새로 생성함
+
+  ```java
+  public class SingletonTest {
+      @Test
+      @DisplayName("스프링 없는 순수한 DI 컨테이너")
+      void pureContainer() {
+          AppConfig appConfig = new AppConfig();
+          //호출할 때 마다 객체를 생성
+          MemberService memberService1 = appConfig.memberService();
+          MemberService memberService2 = appConfig.memberService();
+  
+          //memberService1 != memberService2
+          assertThat(memberService1).isNotSameAs(memberService2);
+      }
+  }
+  ```
+
+  - 고객 트래픽이 초당 100이 나오면, 초당 100개의 객체가 생성되고 소멸됨
+    - 메모리 낭비
+  - 이를 해결하기 위해서 객체를 1개만 생성하고 공유하도록 설계하는 방법이 싱글톤 패턴
+
+
+
+## 싱글톤 패턴
+
+- 클래스의 인스턴스가 딱 1개만 생성되는 것을 보장하는 디자인 패턴
+
+- 인스턴스를 2개 이상 사용하지 못하도록 막아야 함
+
+  - ```private``` 생성자를 사용해서 외부에서 임의로 ```new``` 키워드를 사용하지 못하도록 막음
+
+    ```java
+    public class SingletonService {
+    
+        private static final SingletonService instance = new SingletonService();
+    
+        public static SingletonService getInstance() {
+            return instance;
+        }
+    
+        private SingletonService() {
+        }
+    }
+    ```
+
+    - ```static``` 영역에 객체 ```instance```를 미리 하나 생성해서 올려둠
+    - 이 객체 인스턴스가 필요할 때는 오직 ```getInstance``` 메서드를 통해서만 조회
+      - 이 메서드를 호출하면 항상 같은 인스턴스 반환
+    - 딱 1개의 객체 인스턴스만 존재해야하므로, 생성자를 ```private```으로 막아 외부에서 ```new``` 키워드로 객체 인스턴스가 생성되는 것을 막음
+      - 외부에서 ```new SingletonService()```를 호출하면, ```private``` 때문에 컴파일 에러 발생
+    - 싱글톤 패턴을 구현하는 방법은 여러가지가 있음
+      - 여기서는 객체를 미리 생성해두는 가장 단순하고 안전한 방법 선택
+
+- 싱글톤 패턴 적용 확인
+
+  ```java
+  @Test
+  @DisplayName("싱글톤 패턴을 적용한 객체 사용")
+  void singletonServiceTest() {
+      SingletonService singletonService1 = SingletonService.getInstance();
+      SingletonService singletonService2 = SingletonService.getInstance();
+  
+      assertThat(singletonService1).isSameAs(singletonService2);
+  }
+  ```
+
+  		- 호출할 때 마다 같은 객체 인스턴스가 반환됨
+
+
+
+### 싱글톤 패턴의 문제점
+
+- 싱글톤 패턴을 구현하는 코드 자체가 많이 들어감
+- 의존 관계상 클라이언트가 구체 클래스에 의존 -> DIP 위반
+- OCP 위반 가능성 높음
+- 테스트가 어려움
+- 내부 속성 변경/초기화 어려움
+- private 생성자로 자식 클래스 만들기 힘듦
+- **결론적으로 유연성이 떨어짐 -> DI를 적용하기 어려움**
+- 안티 패턴으로 불리기도 함
+
+
+
+## 다시, 싱글톤 컨테이너
+
+- 스프링 컨테이너는 싱글톤 패턴의 문제점을 해결하면서, 객체 인스턴스를 싱글톤으로 관리함
+
+  - 스프링 빈이 바로 싱글톤으로 관리되는 빈임
+
+- 싱글톤 객체를 생성하고 관리하는 기능을 싱글톤 레지스트리라 함
+
+- 스프링 컨테이너의 이런 기능 덕분에 싱글톤 패턴의 모든 단점을 해결하면서 객체를 싱글톤으로 유지할 수 있음
+
+  - 싱글톤 패턴을 위한 지저분한 코드가 필요 없음
+
+  - DIP, OCP, 테스트, ```private``` 생성자로부터 자유로움
+
+    ```java
+    @Test
+    @DisplayName("스프링 컨테이너와 싱글톤")
+    void springContainer() {
+        ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+    
+        MemberService memberService1 = ac.getBean("memberService", MemberService.class);
+        MemberService memberService2 = ac.getBean("memberService", MemberService.class);
+    
+        assertThat(memberService1).isSameAs(memberService2);
+    }
+    ```
+
+- 스프링 컨테이너 덕분에 웹어플리케이션의 경우 고객의 요청이 올 때 마다 객체를 생성하는 것이 아니라, 이미 만들어진 객체를 공유해서 효율적으로 재사용할 수 있음
+
+- 스프링의 기본 빈 등록 방식은 싱글톤이지만, 싱글톤 방식만 지원하는 것은 아님
+
+
+
+## 싱글톤 방식의 주의점
+
+
+
 
 
 
