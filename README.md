@@ -866,6 +866,85 @@ ApplicationContext applicationContext = new AnnotationConfigApplicationContext(A
 
 ## 싱글톤 방식의 주의점
 
+- 객체 인스턴스를 하나만 생성해서 공유하는 싱글톤 방식은 여러 클라이언트가 하나의 같은 객체 인스턴스를 공유하기 때문에 싱글톤 객체의 상태가 유지(stateful)되도록 설계하면 안됨
+
+- 무상태(stateless)로 설계해야 함
+
+  - 특정 클라이언트에 의존적인 필드가 있으면 안됨
+  - 특정 클라이언트가 값을 변경할 수 있는 필드가 있으면 안됨
+  - 가급적 읽기만 가능해야 함
+  - 필드 대신, 자바에서 공유되지 않는 지역변수, 파라미터, ThreadLocal 등을 사용해야 함
+
+- 스프링 빈의 필드에 공유 값을 설정하면 매우 큰 장애가 발생할 수 있음
+
+  ```java
+  public class StatefulService {
+  
+      private int price; // 상태를 유지하는 필드
+  
+      public void order(String name, int price) {
+          this.price = price; // 여기가 문제
+      }
+  
+      public int getPrice() {
+          return price;
+      }
+  }
+  ```
+
+  ```java
+  class StatefulServiceTest {
+  
+      @Test
+      void statefulServiceSingleton() {
+          ApplicationContext ac = new AnnotationConfigApplicationContext(TestConfig.class);
+          // 1이든 2든 같은 인스턴스임
+          StatefulService statefulService1 = ac.getBean(StatefulService.class);
+          StatefulService statefulService2 = ac.getBean(StatefulService.class);
+          
+          // Thread A: 사용자A 10,000원 주문
+          statefulService1.order("userA", 10000);
+          // Thread B: 사용자B 20,000원 주문
+          statefulService2.order("userA", 20000);
+  
+          // Thread A: 사용자A 주문 금액 조회
+          int price = statefulService1.getPrice();
+  
+          Assertions.assertThat(statefulService1.getPrice()).isEqualTo(20000);
+  
+      }
+  
+      static class TestConfig {
+          @Bean
+          public StatefulService statefulService() {
+              return new StatefulService();
+          }
+      }
+  }
+  ```
+
+  - Thread A가 사용자A의 코드를 호출하고, Thread B가 사용자B의 코드를 호출
+
+  - ```StatefulService```의 ```price``` 필드는 공유되는 필드인데, 특정 클라이언트가 값을 변경함
+
+  - 사용자A의 주문 금액은 10,000원이어야 정상이지만, 20,000원이 되어버림
+
+  - 아래와 같이 무상태로 설계하는게 좋음
+
+    ```java
+    public class StatefulService {
+        public void order(String name, int price) {
+            this.price = price;
+            return price;
+        }
+    }
+    ```
+
+  - 실제로는 훨씬 더 복잡한 코드에서 문제가 생기고 찾아내기 힘듦
+
+    - 실무에서 이런 경우를 종종 보는데, 매우 해결하기 어려운 큰 문제들이 터짐
+    - **스프링 빈은 항상 무상태로 설계해야 함**
+
 
 
 
