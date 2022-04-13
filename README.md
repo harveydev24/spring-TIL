@@ -947,6 +947,182 @@ ApplicationContext applicationContext = new AnnotationConfigApplicationContext(A
 
 
 
+## ```@Configuration과 싱글톤```
+
+```java
+@Configuration
+public class AppConfig {
+
+    @Bean
+    public MemberService memberService() {
+        return new MemberServiceImpl(memberRepository());
+    }
+
+    @Bean
+    public DiscountPolicy discountPolicy() {
+        return new RateDiscountPolicy();
+    }
+
+    @Bean
+    public MemoryMemberRepository memberRepository() {
+        return new MemoryMemberRepository();
+    }
+
+    @Bean
+    public OrderService orderService() {
+        return new OrderServiceImpl(memberRepository(), discountPolicy());
+    }
+}
+```
+
+- ```memberService()```도 ```memberRepository()```를 호출하여 ```MemoryMemberRepository()``` 인스턴스를 생성하고, ```orderService()```도 ```memberRepository()```를 호출하여 ```MemoryMemberRepository()``` 인스턴스를 생성하는데, 이 둘은 사실 같은 인스턴스임
+
+  ```java
+  public class ConfigurationSingletonTest {
+  
+      @Test
+      void configurationTest() {
+          ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+  
+          MemberServiceImpl memberService = ac.getBean("memberService", MemberServiceImpl.class);
+          OrderServiceImpl orderService = ac.getBean("orderService", OrderServiceImpl.class);
+          MemberRepository memberRepository = ac.getBean("memberRepository", MemberRepository.class);
+  
+          MemberRepository memberRepository1 = memberService.getMemberRepository();
+          MemberRepository memberRepository2 = orderService.getMemberRepository();
+  
+          assertThat(memberRepository1).isSameAs(memberRepository2);
+          assertThat(memberRepository).isSameAs(memberRepository1);
+      }
+  }
+  ```
+
+
+
+### @Configuration과 바이트 코드 조작의 마법(?)
+
+- ```ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class)```를 통해 스프링 컨테이너를 만들면, ```MemoryMemberRepository()```객체가 여러개 생성되어야 할 것 같지만, 실제로는 한 개만 생성되어 공유됨
+
+- 이는 ```@Configuration```이 적용된 ```AppConfig``` 때문임
+
+  - 스프링 컨테이너에는 ```AppConfig``` 대신, CGLIB이라는 바이트 코드 조작 라이브러리를 통해 ```AppConfig```를 상속 받은 임의의 다른 클래스가 빈으로 등록됨
+
+    ```java
+    @Test
+        void configurationDeep() {
+            ApplicationContext ac = new AnnotationConfigApplicationContext(AppConfig.class);
+            AppConfig bean = ac.getBean(AppConfig.class);
+    
+            System.out.println("bean = " + bean.getClass());
+        }
+    
+    //출력
+    //bean = class hello.core.AppConfig$$EnhancerBySpringCGLIB$$4ab6406e
+    ```
+
+  - 이 임의의 다른 클래스가 싱글톤을 보장
+
+    - ```@Bean```이 붙은 메서드마다 이미 스프링 빈이 등록되어 있으면 찾아서 반환하고, 아니면 생성해서 빈으로 등록 후 반환하는 코드가 동적으로 만들어짐
+
+    - 내부의 코드가 다음과 같이 작성되어 있을 것임(실제로는 훨씬 복잡)
+
+      ```java
+      ...
+      @Bean
+      public MemberRepository memberRepository() {
+          if (MemoryMemberRepository가 스프링 컨테이너에 빈으로 등록되어 있다면) {
+              return 스프링 컨테이너에서 찾아서 반환
+          } else {
+              빈으로 등록되어 있지 않다면, 기존 로직을 호출하여 MemoryMemberRepository 생성하고 스프링 컨테이너에 등록
+              return 반환
+          }
+      }
+      ```
+
+- ```@Configuration```을 빼버리면, ```@Bean```이 붙은 메서드들이 빈으로 다 등록되지만, 싱글톤이 보장되지 않음
+  - ```MemberService```와, ```OrderService```에서 같은 인스턴스를 사용하지 않고 ```MemoryMemberRepository()``` 인스턴스가 여러개 생성됨
+  - 또한 그 인스턴스들은 순수한 자바 코드로 인스턴스를 만든 것일 뿐, 스프링 빈으로 등록되지 않음
+
+- 스프링 설정 정보는 항상 ```@Configuration```을 사용하자
+
+
+
+## 컴포넌트 스캔과 의존 관계 자동 주입
+
+- 스프링은 설정 정보가 없어도 자동으로 스프링 빈을 등록하는 **컴포넌트 스캔 기능**과 **의존 관계 자동 주입 기능**을 제공
+
+- ```@ComponentScan```을 붙여 컴포넌트를 스캔
+
+  ```java
+  @Configuration
+  @ComponentScan(
+          excludeFilters = @ComponentScan.Filter(type = FilterType.ANNOTATION, classes = Configuration.class)
+  )
+  public class AutoAppConfig {
+  
+  }
+  ```
+
+  - 이 때, ```@Configuration```이 붙은 설정 정보도 자동으로 등록되기 때문에, ```excludeFilter```를 이용하여 설정 정보를 컴포넌트 스캔 대상에서 제외해줌
+
+  - 일반적으로 설정 정보를 스캔 대상에서 제외하지는 않지만, 기존 예제 코드를 활용하기 위함임
+
+- 컴포넌트 스캔은 ```@Component``` 어노테이션이 붙은 클래스를 스캔해서 스프링 빈으로 등록
+
+  ```java
+  @Component
+  public class MemoryMemberRepository implements MemberRepository {
+  	...
+  }
+  ```
+
+  - 스프링 빈의 기본 이름은 클래스명을 사용하되, 맨 앞글자만 소문자로 사용
+
+    - ```MemberServiceImpl``` -> ```memberServiceImpl```
+
+  - 빈 이름을 직접 지정할 때는, ```@Component("memberServiceImpl2")```와 같이 사용
+
+  - 컴포넌트 스캔을 사용하면, 직접 의존 관계를 주입하는 것 대신 ```@Autowired```를 이용하여 의존 관계 주입
+
+    - 생성자에 ```@Autowired```를 붙이면, 스프링 컨테이너가 자동으로 해당 스프링 빈을 찾아서 주입
+
+    - 기본 조회 전략은 타입이 같은 빈을 찾아서 주입
+
+      ```java
+      @Component
+      public class MemberServiceImpl implements MemberService{
+      
+          private final MemberRepository memberRepository;
+      
+          @Autowired
+          public MemberServiceImpl(MemberRepository memberRepository) {
+              this.memberRepository = memberRepository;
+          }
+      	...
+      }
+      ```
+
+      
+
+- 기존에 빈을 직접 등록했었던 ```AppConfig```처럼 잘 작동
+
+  ```java
+  public class AutoAppConfigTest {
+  
+      @Test
+      void basicScan() {
+          ApplicationContext ac = new AnnotationConfigApplicationContext(AutoAppConfig.class);
+  
+          MemberService memberService = ac.getBean(MemberService.class);
+          assertThat(memberService).isInstanceOf(MemberService.class);
+      }
+  }
+  ```
+
+
+
+
+
 
 
 
