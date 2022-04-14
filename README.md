@@ -355,10 +355,14 @@
         ```
 
       - 애플리케이션 실행 시점(런타임)에 외부에서 실제 구현 객체를 생성하고, 클라이언트에 전달해서 클라이언트와 서버의 실제 의존 관계가 연결되는 것을 **의존 관계 주입**이라고 함
+
         - 객체 인스턴스를 생성하고, 그 참조값을 전달해서 연결됨
           - ```OrderServiceImpl```에 ```MemoryMemberRepository```와 ```RateDiscountPolicy```의 참조값을 연결
+
       - 의존 관계 주입을 사용하면, 클라이언트 코드를 변경하지 않고 클라이언트가 호출하는 대상의 타입 인스턴스를 변경할 수 있음
+
       - 의존 관계 주입을 사용하면, 정적인 클래스 의존 관계를 변경하지 않고, 동적인 객체 인스턴스 의존 관계를 쉽게 변경할 수 있음
+
         - 클라이언트 코드에 손대지 않고 ```FixDiscountPolicy```를 , ```RateDiscountPolicy```로 쉽게 바꿀 수 있음
 
 
@@ -1040,6 +1044,7 @@ public class AppConfig {
       ```
 
 - ```@Configuration```을 빼버리면, ```@Bean```이 붙은 메서드들이 빈으로 다 등록되지만, 싱글톤이 보장되지 않음
+
   - ```MemberService```와, ```OrderService```에서 같은 인스턴스를 사용하지 않고 ```MemoryMemberRepository()``` 인스턴스가 여러개 생성됨
   - 또한 그 인스턴스들은 순수한 자바 코드로 인스턴스를 만든 것일 뿐, 스프링 빈으로 등록되지 않음
 
@@ -1121,7 +1126,9 @@ public class AppConfig {
 
 
 
-### 탐색  위치 와 기본 스캔 대상
+
+
+## 탐색  위치 와 기본 스캔 대상
 
 ### 탐색 위치 지정
 
@@ -1162,21 +1169,158 @@ public class AppConfig {
 
 
 
+### 필터
+
+```java
+public class ComponentFilterAppConfigTest {
+
+    @Test
+    void filterScan() {
+        ApplicationContext ac = new AnnotationConfigApplicationContext(ComponentFilterAppConfig.class);
+        BeanA beanA = ac.getBean("beanA", BeanA.class);
+        assertThat(beanA).isNotNull();
+
+        org.junit.jupiter.api.Assertions.assertThrows(
+                NoSuchBeanDefinitionException.class,
+                () -> ac.getBean("beanB", BeanB.class)
+        );
+
+    }
+
+    @Configuration
+    @ComponentScan(
+            includeFilters = @Filter(type = FilterType.ANNOTATION, classes = MyIncludeComponent.class),
+            excludeFilters = @Filter(type = FilterType.ANNOTATION, classes = MyExcludeComponent.class)
+    )
+    static class ComponentFilterAppConfig {
+    }
+}
+```
+
+- ```includeFilters```에 ```MyIncludeComponent``` 어노테이션을 추가하여 ```BeanA```가 스프링 빈에 등록됨
+- ```excludeFilters```에 ```MyExcludeComponent``` 어노테이션을 추가하여 ```BeanB```가 스프링 빈에 등록되지 않음
 
 
 
+## 중복 등록과 충돌
+
+### 자동 빈 등록 vs 자동 빈 등록
+
+- 컴포넌트 스캔에 의해 자동으로 스프링 빈이 등록되었는데, 그 이름이 같은 경우 스프링은 ```ConflictingBeanDefinitionException``` 오류를 발생시킴
 
 
 
- 
+### 수동 빈 등록 vs 자동 빈 등록
+
+- 이 경우, **스프링**에서는 수동 빈 등록이 우선권을 가짐
+  - 수동 빈이 자동 빈을 오버라이딩 해버림
+- 대부분 개발자가 의도적으로 설정해서 이런 결과가 만들어지기보다, 여러 설정들이 꼬여서 이런 결과가 만들어지는 게 대부분임
+  - 이런 애매한 버그는 잡기 매우 힘듦
+  - 따라서 **스프링 부트**는 최근 수동 빈 등록과 자동 빈 등록이 충돌나면 오류가 발생하도록 기본값을 바꿈
 
 
 
+## 의존 관계 자동 주입
 
+### 다양한 의존 관계 주입 방법
 
+1. 생성자 주입
 
+   - 생성자를 통해서 의존 관계를 주입 받는 방법
 
+     ```java
+     @Component
+     public class OrderServiceImpl implements OrderService{
+     
+         private final MemberRepository memberRepository;
+         private final DiscountPolicy discountPolicy;
+     
+         @Autowired
+         public OrderServiceImpl(MemberRepository memberRepository, DiscountPolicy discountPolicy) {
+             this.memberRepository = memberRepository;
+             this.discountPolicy = discountPolicy;
+         }
+     
+     	...
+     }
+     ```
 
+   - 생성자 호출 시점에 딱 1번 호출되는 것이 보장됨
 
+   - **불변, 필수** 의존 관계에 사용
 
+   - 스프링 빈에서 오버로딩 없이 생성자가 하나인 경우, ```@Autowired``` 생략 가능
+
+   - 대부분 생성자 주입 사용
+
+2. 수정자 주입(```setter``` 주입)
+
+   - ```setter```라 불리는 수정자 메서드를 통해서 의존 관계를 주입하는 방법
+
+     ```java
+     @Component
+     public class OrderServiceImpl implements OrderService{
+     
+         private final MemberRepository memberRepository;
+         private final DiscountPolicy discountPolicy;
+       
+         @Autowired
+       	public setMemberRepository(MemberRepository memberRepository) {
+           this.memberRepository = memberRepository
+         }
+       
+         @Autowired
+       	public setDiscountPolicy(DiscountPolicy discountPolicy) {
+           this.discountPolicyy = discountPolicy
+         }
+       
+     	...
+     }
+     ```
+
+   - **선택, 변경** 가능성이 있는 의존 관계에 사용
+
+3. 필드 주입
+
+   - 이름 그대로 필드에 바로 주입하는 방법
+
+     ```java
+     @Component
+     public class OrderServiceImpl implements OrderService{
+     
+         @Autowired private final MemberRepository memberRepository;
+         @Autowired private final DiscountPolicy discountPolicy;
+     
+     	...
+     }
+     ```
+
+   - 코드가 간결하지만, 외부에서 변경이 불가능하여 테스트하기 힘들다는 단점이 있음
+   - 그래서 거의 사용하지 않음
+     - 어플리케이션의 실제 코드와 관계 없는 테스트 코드나, 스프링 설정을 목적으로 하는 ```Configuration``` 같은 곳에서만 특별한 용도로 사용
+
+4. 일반 메서드 주입
+
+   - 일반 메서드를 통해서 주입 받을 수 있음
+
+     ```java
+     @Component
+     public class OrderServiceImpl implements OrderService{
+     
+         private final MemberRepository memberRepository;
+         private final DiscountPolicy discountPolicy;
+       
+         @Autowired
+         public void init(MemberRepository memberRepository, DiscountPolicy discountPolicy) {
+             this.memberRepository = memberRepository;
+             this.discountPolicy = discountPolicy;
+         }
+     
+     	...
+     }
+     ```
+
+   - 한 번에 여러 필드를 주입 받을 수 있음
+
+   - 일반적으로 잘 사용하지 않음
 
