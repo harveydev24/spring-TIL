@@ -1324,3 +1324,232 @@ public class ComponentFilterAppConfigTest {
 
    - 일반적으로 잘 사용하지 않음
 
+
+
+## 옵션 처리
+
+- 주입할 스프링 빈이 없어도 동작해야 할 때가 있음
+
+- ```@Autowired```만 사용할 경우, ```required``` 옵션의 기본값이 ```true```이기 때문에 오류가 발생할 수 있음
+
+- 이를 다음의 세 가지 방법으로 처리 가능
+
+  1. ```Autowired(required=false)```
+
+     - 자동 주입할 대상이 없을 경우, 수정자 메서드 자체가 호출되지 않음
+
+       ```java
+       public class AutowiredTest {
+       
+           @Test
+           void AutowiredOption() {
+               ApplicationContext ac = new AnnotationConfigApplicationContext(TestBean.class);
+           }
+       
+           static class TestBean {
+               @Autowired(required=false)
+               public void setNoBean1(Member noBean1) {
+                   System.out.println("noBean1 = " + noBean1);
+                 	// Member는 스프링 빈이 아니므로 아무것도 출력되지 않음
+               }
+           }
+       }
+       
+       ```
+
+  2. ```@Nullable```
+
+     - 자동 주입할 대상이 없으면 null 주입
+
+       ```java
+       public class AutowiredTest {
+       
+           @Test
+           void AutowiredOption() {
+               ApplicationContext ac = new AnnotationConfigApplicationContext(TestBean.class);
+           }
+       
+           static class TestBean {
+               @Autowired
+               public void setNoBean2(@Nullable Member noBean2) {
+                   System.out.println("noBean2 = " + noBean2);
+                 	// noBean2 = null
+               }
+           }
+       }
+       
+       ```
+
+  3. ```Optional<>```
+
+     - 자동 주입할 대상이 없으면 ```Optional.empty``` 주입
+
+       ```java
+       public class AutowiredTest {
+       
+           @Test
+           void AutowiredOption() {
+               ApplicationContext ac = new AnnotationConfigApplicationContext(TestBean.class);
+           }
+       
+           static class TestBean {
+               @Autowired
+               public void setNoBean3(Optional<Member> noBean3) {
+                   System.out.println("noBean3 = " + noBean3);
+                 	// noBean3 = Optional.empty
+               }
+           }
+       }
+       
+       ```
+
+
+
+## 생성자 주입을 선택하라
+
+- 과거에는 수정자 주입과 필드 주입등의 방법을 많이 사용했지만, 최근에는 스프링을 포함한 DI 프레임워크 대부분이 **생성자 주입**을 권장함
+
+### 생성자 주입을 권장하는 이유
+
+- 불변
+
+  - 대부분의 의존 관계 주입은 한 번 일어나면, 어플리케이션 종료 시점까지 의존 관계를 변경할 일이 없고 오히려 불변해야 하는 경우가 많음
+  - 수정자 주입을 사용하면 ```setXxxx``` 메서드를 ```public```으로 열어둬야 함
+    - 누군가 실수로 변경할 수도 있고, 변경하면 안되는 메서드를 열어두는 것은 좋은 설계가 아님
+
+  - 생성자 주입은 객체를 생성할 때 딱 1번만 호출되므로, 이후에 호출되는 일이 없어 불변하게 설계할 수 있음
+
+- 누락
+
+  - 프레임워크 없이 순수한 자바 코드로만 단위 테스트를 수행할 때, 코드가 누락되면 컴파일 에러가 발생하므로 누락을 잡아내기 쉬움
+
+- ```final``` 키워드
+
+  - 생성자 주입을 사용하면, 필드에 ```final``` 키워드를 사용 가능
+    - 수정자 주입을 포함한 나머지 주입 방식은 모두 생성자 이후에 호출되므로, 필드에 ```final``` 키워드 사용 불가능
+  - 생성자에서 혹시라도 값이 설정되지 않으면, 컴파일 에러 발생
+
+
+
+### 정리
+
+- 생성자 주입 방식을 사용하면, 프레임 워크에 의존하지 않고, 순수한 자바 언어의 특징을 잘 살릴 수 있음
+- 기본으로 생성자 주입을 사용하고, 필수 값이 아닌 경우에는 수정자 주입 방식을 옵션으로 부여
+  - 생성자 주입과 수정자 주입을 동시에 사용 가능
+  - 필드 주입은 사용하지 않는게 좋음
+
+
+
+## 롬복과 최신 트랜드
+
+- 막상 개발을 해보면, 대부분이 다 불변이고, 따라서 생성자에 ```final``` 키워드를 사용하게 됨
+
+  - 생성자도 만들어야 하고, 주입 받은 값을 대입하는 코드도 만들어야됨
+
+    ```java
+    @Component
+    public class OrderServiceImpl implements OrderService{
+    
+        private final MemberRepository memberRepository;
+        private final DiscountPolicy discountPolicy;
+    
+        @Autowired
+        public OrderServiceImpl(MemberRepository memberRepository, DiscountPolicy discountPolicy) {
+            this.memberRepository = memberRepository;
+            this.discountPolicy = discountPolicy;
+        }
+    
+    	...
+    }
+    
+    ```
+
+- lombok 라이브러리로 코드를 최적화할 수 있음
+
+  - build.gradle 설정후 코끼리 클릭
+
+    ```java
+    ...
+      
+    //lombok 설정 추가
+    configurations {
+    	compileOnly {
+    		extendsFrom annotationProcessor
+    	}
+    }
+    //lombok 설정 끝
+    
+    ...
+    
+    dependencies {
+    	implementation 'org.springframework.boot:spring-boot-starter'
+    
+    	//lombok 라이브러리 추가
+    	compileOnly 'org.projectlombok:lombok'
+    	annotationProcessor 'org.projectlombok:lombok'
+    
+    	testCompileOnly 'org.projectlombok:lombok'
+    	testAnnotationProcessor 'org.projectlombok:lombok'
+    	//lombok 라이브러리 추가 끝
+    
+    	testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    }
+    
+    ...
+    ```
+
+  - lombok 플러그인 설치하고, preference-annotation processor에서 enable annotation processing 활성화
+
+  - lombok을 이용하여 다음과 같이 코드를 간단히 작성할 수 있음
+
+    ```java
+    @Component
+    @RequiredArgsConstructor
+    public class OrderServiceImpl implements OrderService{
+    
+        private final MemberRepository memberRepository;
+        private final DiscountPolicy discountPolicy;
+    
+    	...
+    }
+    ```
+
+    - ```@RequiredArgsConstructor```를 붙이면, ```final``` 키워드가 붙은 필드에 대해 컴파일 시점에 생성자에서 이를 대입하는 코드를 자동으로 생성해줌
+
+- 정리
+  - 최근에는 생성자를 딱 1개 두고, ```@Autowired```를 생략하는 방법을 주로 사용
+  - 여기에 lombok의 ```@RequiredArgsConstructor```를 이용하면 더 간결한 코드 작성 가능
+
+
+
+## 같은 타입의 빈이 2개 이상 조회되는 경우
+
+- ```@Autowired```는 타입(Type)으로 조회함
+
+  ```java
+  @Autowired
+  private DiscountPolicy discountpPolicy
+  ```
+
+  - 타입으로 조회하기 때문에 마치 ```ac.getBean(DiscountPolicy.class)```와 유사하게 동작(실제로는 더 많은 기능 제공)
+
+  - 때문에 ```DiscountPolicy```의 하위 타입인 ```FixDiscountPolicy```와 ```RateDiscountPolicy```이 둘 다 스프링 빈으로 선언되면 ```NoUniqueBeanDefinition``` 에러 발생
+
+    ```java
+    @Component
+    public class FixDiscountPolicy implements DiscountPolicy
+    ```
+
+    ```java
+    @Component
+    public class FixDiscountPolicy implements DiscountPolicy
+    ```
+
+- 이 때, 하위 타입으로 의존 관계를 주입할 수 있지만, 이는 DIP를 위배하고 코드의 유연성을 떨어뜨림
+
+- 또한 이름만 다르고, 완전히 똑같은 타입의 스프링 빈이 2개 있을 때, 해결 불가
+
+- 스프링 빈을 수동 등록해서 문제를 해결해도 되지만, 의존 관계 자동 주입에서 해결하는 여러 방법이 있음
+
+  - 
+
