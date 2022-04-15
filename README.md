@@ -1440,7 +1440,7 @@ public class ComponentFilterAppConfigTest {
 
 
 
-## 롬복과 최신 트랜드
+## 롬복(lombok)과 최신 트렌드
 
 - 막상 개발을 해보면, 대부분이 다 불변이고, 따라서 생성자에 ```final``` 키워드를 사용하게 됨
 
@@ -1551,5 +1551,98 @@ public class ComponentFilterAppConfigTest {
 
 - 스프링 빈을 수동 등록해서 문제를 해결해도 되지만, 의존 관계 자동 주입에서 해결하는 여러 방법이 있음
 
-  - 
+
+
+### 해결법
+
+- ```@Autowired``` 필드명 매칭
+
+  - ```@Autowired```는 타입 매칭을 시도하고, 이 때 여러 빈이 조회되면 필드 이름, 파라미터 이름으로 빈 이름을 추가 매칭함
+
+    ```java
+    @Autowired
+    private DiscountPolicy discountPolicy
+    ```
+
+    ```java
+    @Autowired
+    private DiscountPolicy rateDiscountPolicy
+    ```
+
+    - 필드명 매칭은 타입 매칭을 먼저시도하고, 그 결과 여러 빈이 있을 때 추가로 동작하는 기능
+
+
+
+- ```@Qualifier``` 사용
+
+  - ```Qualifier```는 추가 구분자를 붙여주는 방법
+
+  - 추가적인 방법을 제공하는 것이지 빈 이름 자체를 변경하는 것은 아님
+
+  - 주입할 때, ```@Qualifier```를 붙여주고 등록한 이름을 넣음
+
+    ```java
+    @Component
+    @Qualifier("mainDiscountPolicy")
+    public class RateDiscountPolicy implements DiscountPolicy
+    ```
+
+    ```java
+    @Component
+    @Qualifier("fixDiscountPolicy")
+    public class FixDiscountPolicy implements DiscountPolicy
+    ```
+
+    ```java
+    @Component
+    public class OrderServiceImpl implements OrderService{
+    
+        private final MemberRepository memberRepository;
+        private final DiscountPolicy discountPolicy;
+    	
+        @Autowired
+        public OrderServiceImpl(MemberRepository memberRepository, @Qualifier("mainDiscountPolicy") DiscountPolicy discountPolicy) {
+            this.memberRepository = memberRepository;
+            this.discountPolicy = discountPolicy;
+        }
+        
+        ...
+    }
+    ```
+
+    			- ```@Qualifier```로 주입할 때, ```@Qualifier("mainDiscountPolicy")```를 못찾으면, ```"mainDiscountPolicy"```라는 이름의 스프링 빈을 추가로 찾음
+       - 하지만, ```@Qualifier```는 ```@Qualifier```를 찾는 용도로만 사용하는게 좋음
+         - 헷갈릴 요소를 만들지 말자
+
+
+
+- ```@Primary``` 사용
+
+  - ```@Primary```는 우선순위를 지정해줌
+
+    ```java
+    @Component
+    @Primary
+    public class RateDiscountPolicy implements DiscountPolicy
+    ```
+
+    ```java
+    @Component
+    public class FixDiscountPolicy implements DiscountPolicy
+    ```
+
+
+
+### ```@Primary```와 ```@Qualifier```의 활용
+
+- 코드에서 자주 사용하는 메인 DB의 커넥션을 획득하는 스프링 빈A가 있고, 특별한 기능으로 가끔 사용하는 서브 DB의 커넥션을 획득하는 스프링 빈B가 있을 때, 빈A에는 ```@Primary```를 적용해서 조회하는 곳에서 ```@Qualifier``` 지정 없이 편하게 조회하고, 빈B에는 ```@Qualifier```를 지정해서 명시적으로 조회하면 코드가 깔끔해짐
+  - 스프링 빈A에 ```@Qualifier```를 지정하는 것은 자유
+
+
+
+### ```@Primary```와 ```@Qualifier```의 우선 순위
+
+- ```@Primary```는 기본값처럼 동작하고, ```@Qualifier```는 매우 상세하게 동작함
+- 스프링은 자동보다는 수동이, 넓은 범위의 선택권보다는 좁은 범위의 선택권이 우선 순위가 높음
+- 따라서 ```@Primary``` 보다 ```@Qualifier```의 우선 순위가 높음
 
