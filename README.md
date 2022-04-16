@@ -1646,3 +1646,206 @@ public class ComponentFilterAppConfigTest {
 - 스프링은 자동보다는 수동이, 넓은 범위의 선택권보다는 좁은 범위의 선택권이 우선 순위가 높음
 - 따라서 ```@Primary``` 보다 ```@Qualifier```의 우선 순위가 높음
 
+
+
+### Annotation 직접 만들기
+
+- ```@Qualifier("mainDiscountPolicy")```와 같이 적으면, 컴파일시 타입 체크가 안됨
+
+- 다음과 같이 직접 어노테이션을 만들 수 있음
+
+  ```java
+  @Target({ElementType.FIELD, ElementType.METHOD, ElementType.PARAMETER, ElementType.TYPE, ElementType.ANNOTATION_TYPE})
+  @Retention(RetentionPolicy.RUNTIME)
+  @Inherited
+  @Documented
+  @Qualifier("mainDiscountPolicy")
+  public @interface MainDiscountPolicy {
+  }
+  ```
+
+  ```java
+  @Component
+  @MainDiscountPolicy
+  public class RateDiscountPolicy implements DiscountPolicy
+  ```
+
+  ```java
+  @Component
+  public class OrderServiceImpl implements OrderService{
+  
+      private final MemberRepository memberRepository;
+      private final DiscountPolicy discountPolicy;
+  
+      @Autowired
+      public OrderServiceImpl(MemberRepository memberRepository, @MainDiscountPolicy DiscountPolicy discountPolicy) {
+          this.memberRepository = memberRepository;
+          this.discountPolicy = discountPolicy;
+      }
+  
+  	...
+  }
+  
+  ```
+
+- 자바에서 어노테이션에는 상속 개념이 없음
+  - 어노테이션을 여러개 모아서 사용하는 기능은 스프링이 지원하는 기능
+
+
+
+### 조회한 빈이 모두 필요할 때
+
+- 의도적으로 해당 타입의 스프링 빈이 모두 필요한 경우도 있음
+
+  - 할인 서비스를 제공하는데, 클라이언트가 할인의 종류(fix, rate)를 선택할 수 있는 경우
+
+- 스프링을 사용하면 전략 패턴을 매우 쉽게 구현할 수 있음
+
+  - Map 또는 List로 조회한 빈을 모두 받을 수 있음
+
+    - 받은 빈들 중 동적으로 필요한 빈 선택 가능
+
+    ```java
+    public class AllBeanTest {
+    
+        @Test
+        void findAllBean() {
+            ApplicationContext ac = new AnnotationConfigApplicationContext(AutoAppConfig.class, DiscountService.class);
+    
+            DiscountService discountService = ac.getBean(DiscountService.class);
+            Member member = new Member(1L, "userA", Grade.VIP);
+            int discountPrice = discountService.discount(member, 10000, "fixDiscountPolicy");
+    
+            assertThat(discountService).isInstanceOf(DiscountService.class);
+            assertThat(discountPrice).isEqualTo(1000);
+    
+            int rateDiscountPrice = discountService.discount(member, 20000, "rateDiscountPolicy");
+            
+            assertThat(discountService).isInstanceOf(DiscountService.class);
+            assertThat(rateDiscountPrice).isEqualTo(2000);
+        }
+    
+    
+        static class DiscountService {
+            private final Map<String, DiscountPolicy> policyMap;
+            private final List<DiscountPolicy> policies;
+    
+            @Autowired
+            public DiscountService(Map<String, DiscountPolicy> policyMap, List<DiscountPolicy> policies) {
+                this.policyMap = policyMap;
+                this.policies = policies;
+                System.out.println("policyMap = " + policyMap);
+                System.out.println("policies = " + policies);
+            }
+    
+            public int discount(Member member, int price, String discountCode) {
+                DiscountPolicy discountPolicy = policyMap.get(discountCode);
+                return discountPolicy.discount(member, price);
+            }
+        }
+    }
+    ```
+
+    - ```DiscountService```는 모든 ```DiscountPolicy```(fix, rate)를 주입 받음
+    - ```discount()``` 메서드는 ```discountCode```로 넘어온 빈의 이름으로 ```policyMap```에서 해당 스프링 빈을 찾음
+
+
+
+## 자동, 수동의 올바른 실무 운영 기준
+
+- **편리한 자동 기능을 기본으로 사용하자**
+  - 시간이 지날수록 점점 자동을 선호하는 추세
+  - ```@Component```, ```@Controller```, ```@Service```, ```@Repository``` 등을 이용하여 일반적은 어플리케이션 로직을 자동으로 스캔할 수 있음
+  - 스프링 부트는 컴포넌트 스캔을 기본으로 사용하며, 스프링 부트의 다양한 스프링 빈들도 조건이 맞으면 자동으로 등록되도록 설계됨
+  - 설정 정보를 기반으로 어플리케이션을 구성하는 부분과, 실제 동작하는 부분을 명확하게 나누는 것이 이상적이지만, 개발자 입장에서 스프링 빈을 하나 등록할 때, ```@Component```만 넣어주면 끝나는 일을, ```@Configuration``` 설정 정보에 가서 ```@Bean```을 적고, 객체를 생성하고, 주입할 대상을 일일이 적는 과정은 번거로움
+    - 관리할 빈이 많으면 설정 정보를 관리하는 것도 문제
+  - 결정적으로 자동 빈 등록을 사용해도 OCP, DIP를 지킬 수 있음
+
+
+
+- **수동 빈 등록을 사용하는 경우**
+
+  - 어플리케이션은 크게 업무 로직과 기술 지원 로직으로 나눌 수 있음
+    - 업무 로직 빈
+      - 웹을 지원하는 컨트롤러, 핵심 비즈니스 로직이 있는 서비스, 데이터 계층의 로직을 처리하는 레포지토리
+      - 보통 비즈니스 요구사항을 개발할 때 추가되거나 변경됨
+      - 업무 로직은 숫자도 매우 많고, 한 번 개발하면, 컨트롤러, 서비스, 레포지토리처럼 어느정도 유사한 패턴이 있음
+        - 이런 경우 자동 기능을 적극 사용하는 것이 편함
+        - 문제가 발생해도 어떤 곳에서 문제가 발생했는지 명황하게 파악하기 쉬움
+    - 기술 지원 빈
+      - 기술적인 문제나 공통 관심사(AOP)를 처리할 때 주로 사용됨
+      - 데이터 베이스 연결이나, 공통 로그 처리처럼 업무 로직을 지원하기 위한 하부 기술이나 공통 기술들
+      - 기술 지원 로직은 업무 로직과 비교해서 수가 매우 적고, 보통 어플리케이션 전반에 걸쳐서 광범위하게 영향을 미침
+        - 기술 지원 로직은 잘 적용되고 있는지 아닌지 조차 파악하기 힘듦
+        - 이런 경우 가급적 수동 빈 등록을 사용해서 명확하게 드러내는 것이 좋음
+        - 즉, 어플리케이션에 광범위하게 영향을 미치는 기술 지원 객체는 수동 빈으로 등록해서 설정 정보에 바로 나타나게 하는 것이 유지보수하기 편함
+
+  - 비즈니스 로직 중에서 다형성을 적극 활용할 때
+
+    - 앞서 살펴봤던, 조회한 빈이 모두 필요한 경우, 코드를 읽기 쉽게 하기 위해 수동으로 등록할 수 있음
+
+      ```java
+      public class AllBeanTest {
+      
+        	...
+        
+          static class DiscountService {
+              private final Map<String, DiscountPolicy> policyMap;
+              private final List<DiscountPolicy> policies;
+      
+              @Autowired
+              public DiscountService(Map<String, DiscountPolicy> policyMap, List<DiscountPolicy> policies) {
+                  this.policyMap = policyMap;
+                  this.policies = policies;
+                  System.out.println("policyMap = " + policyMap);
+                  System.out.println("policies = " + policies);
+              }
+      
+              ...
+          }
+      }
+      ```
+
+      - 위의 코드를 봤을 때, DiscountPolicy에 무엇이 들어올지 파악하기 쉽지 않음
+
+      - 따라서 아래와 같이 설정 정보를 따로 관리하면, 한 눈에 파악하기 쉬움
+
+        ```java
+        @Configuration
+        public class DiscountPolicyConfig {
+          
+        	@Bean
+          public DiscountPolicy rateDiscountPolicy() {
+            return new RateDiscountPolicy();
+          }
+          
+          @Bean
+          public DiscountPolicy fixDiscountPolicy() {
+            return new FixDiscountPolicy();
+          }
+        }
+        ```
+
+
+
+- **스프링과 스프링 부트가 자동으로 등록하는 수 많은 빈들**
+  - 이런 빈들은 스프링의 설계 의도대로 사용하는 것이 좋음
+    - 스프링 부트의 경우 ```DataSource``` 같은 데이터 베이스 연결에 사용하는 기술 지원 로직까지 내부에서 자동으로 등록해주는데, 메뉴얼을 잘 참고해서 스프링 부트가 의도한대로 사용하면 됨
+  - 반면, 스프링 부트가 아니라, 직접 기술 지원 객체를 스프링 빈으로 등록한다면 수동으로 등록해서 명확하게 드러내는 것이 좋음
+
+
+
+### 정리
+
+- 편리한 자동 기능을 기본으로 사용
+- 직접 등록하는 기술 지원 객체는 수동 등록
+- 다형성을 적극 활용하는 비즈니스 로직은 수동 등록을 고민
+
+
+
+
+
+
+
+
+
