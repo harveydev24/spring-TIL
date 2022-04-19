@@ -1928,15 +1928,306 @@ public class ComponentFilterAppConfigTest {
 
   
 
-
-
-
-
 ### 설정 정보에 초기화 메서드, 종료 메서드 지정
 
+- 설정 정보에 다음과 같이 초기화, 종료 메서드를 지정할 수 있음
+
+  ```java
+  public class BeanLifeCycleTest {
+  	...
+      @Configuration
+      static class LifeCycleConfig {
+          
+          @Bean(initMethod = "init", destroyMethod = "close")
+          public NetworkClient networkClient() {
+              NetworkClient networkClient =  new NetworkClient();
+              networkClient.setUrl("http://hello-spring.dev");
+              return networkClient;
+          }
+      }
+  }
+  ```
+
+  ```java
+  public class NetworkClient {
+  	...
+      public void init() {
+          System.out.println("NetworkClient.init");
+          connect();
+          call("초기화 연결 메세지");
+      }
+  
+      public void close() {
+          System.out.println("NetworkClient.close");
+          disconnect();
+      }
+  }
+  ```
+
+- 이 방식을 이용하면, 메서드 이름을 자유롭게 지을 수 있음
+
+- 스프링 빈이 스프링 코드에 의존하지 않음
+
+  - ```NetworkClient```에 스프링과 관련한 코드가 존재하지 않음
+
+- 코드가 아니라, 설정 정보를 이용하므로 코드를 고칠 수 없는 외부 라이브러리에도 초기화, 종료 메서드 적용 가능
+
+- 종료 메서드 추론
+
+  - ```@Bean```의 ```destroyMethod``` 속성에는 아주 특별한 기능이 있음
+
+  - 외부 라이브러리는 대부분 ```close, shutdown```이라는 이름의 종료 메서드 사용
+
+  - ```@Bean```의 ```destroyMethod```는 기본값이 ```(inferred)```(추론)로 등록되어있음
+
+    - 이 추론 기능은 ```close, shutdown```라는 이름의 메서드를 자동으로 호출
+
+    - 따라서 직접 스프링 빈으로 등록하면, 종료 메서드를 따로 적어주지 않아도 잘 동작함
+    - 추론 기능은 ```destoryMethod=""```와 같이 작성하면 제거됨
 
 
-### ```PostConstruct, @PreDestroy``` 어노테이션 지원
+
+### ```@PostConstruct, @PreDestroy``` 어노테이션 지원
+
+```java
+public class BeanLifeCycleTest {
+	...
+    @Configuration
+    static class LifeCycleConfig {
+        @Bean
+        public NetworkClient networkClient() {
+            NetworkClient networkClient =  new NetworkClient();
+            networkClient.setUrl("http://hello-spring.dev");
+            return networkClient;
+        }
+    }
+}
+```
+
+```java
+import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
+
+public class NetworkClient {
+	...
+    @PostConstruct
+    public void init() {
+        System.out.println("NetworkClient.init");
+        connect();
+        call("초기화 연결 메세지");
+    }
+
+    @PreDestroy
+    public void close() {
+        System.out.println("NetworkClient.close");
+        disconnect();
+    }
+}
+```
+
+- 권장되는 방법
+  - 어노테이션 하나만 붙이면 되므로 편리
+- 임포트한 패키지를 보면, ```javax.annotation```임
+  - 스프링에 종속된 기술이 아니라, JSR-250이라는 자바 표준이기 때문에 스프링이 아닌 다른 컨테이너에서도 잘 동작
+- 컴포넌트 스캔과 잘어울림
+- 유일한 단점은 외부 라이브러리에는 적용할 수 없다는 점
 
 
 
+### 정리
+
+- ```@PostConstruct, @PreDestroy``` 어노테이션을 사용하자
+- 코드를 고칠 수 없는 외부 라이브러리를 초기화, 종료해야 한다면, ```@Bean```의 ```initMethod, destroyMethod```를 사용하자
+
+
+
+## 빈 스코프
+
+- 빈이 존재할 수 있는 범위
+- 다음과 같이 다양한 스코프를 지원
+  - 싱글톤
+    - 기본 스코프
+    - 스프링 컨테이너의 시작과 종료까지 유지되는 가장 넓은 범위의 스코프
+  - 프로토타입
+    - 스프링 컨테이너는 프로토타입 빈의 생성과 의존 관계 주입까지만 관여하고 더는 관리하지 않는 매우 짧은  범위의 스코프
+    - 종료 메서드 호출이 안됨
+  - 웹 관련 스코프
+    - request
+      - 웹 요청이 들어오고, 나갈 때까지 유지되는 스코프
+    - session
+      - 웹 세션이 생성되고 종료될 때까지 유지되는 스코프
+    - application
+      - 웹의 서블릿 컨텍스와 같은 범위로 유지되는 스코프
+
+
+
+### 프로토타입 스코프
+
+- **싱글톤 스코프의 빈**을 조회하면, 스프링 컨테이너는 **항상 같은 인스턴스의 스프링 빈을 반환**
+
+  ```java
+  public class SingletonTest {
+  
+      @Test
+      void singletonBeanFind() {
+          AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(SingletonBean.class);
+  
+          SingletonBean singletonBean1 = ac.getBean(SingletonBean.class);
+          SingletonBean singletonBean2 = ac.getBean(SingletonBean.class);
+  
+          assertThat(singletonBean1).isSameAs(singletonBean2);
+          
+          ac.close();
+      }
+  
+      @Scope("singleton")
+      static class SingletonBean {
+          @PostConstruct
+          public void init() {
+              System.out.println("SingletonBean.init");
+          }
+  
+          @PreDestroy
+          public void destroy() {
+              System.out.println("SingletonBean.destroy");
+          }
+      }
+  }
+  ```
+
+- 반면, **프로토타입 스코프**를 조회하면, 스프링 컨테이너는 항상 **새로운 인스턴스를 생성해서 반환**
+
+  ```java
+  public class PrototypeTest {
+  
+      @Test
+      void prototypeBeanFind() {
+          AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(PrototypeBean.class);
+  
+          System.out.println("find prototypeBean1");
+          PrototypeBean prototypeBean1 = ac.getBean(PrototypeBean.class);
+          System.out.println("find prototypeBean2");
+          PrototypeBean prototypeBean2 = ac.getBean(PrototypeBean.class);
+          
+          System.out.println("prototypeBean1 = " + prototypeBean1);
+          System.out.println("prototypeBean2 = " + prototypeBean2);
+  
+          assertThat(prototypeBean1).isNotSameAs(prototypeBean2);
+  
+          ac.close();
+      }
+  
+      @Scope("prototype")
+      static class PrototypeBean {
+          @PostConstruct
+          public void init() {
+              System.out.println("PrototypeBean.init");
+          }
+  
+          @PreDestroy
+          public void destroy() {
+              System.out.println("PrototypeBean.destroy");
+          }
+      }
+  }
+  ```
+
+  - 핵심은 스프링 컨테이너는 프로토타입 빈을 생성하고, 의존 관계 주입, 초기화까지만 처리
+  - 클라이언트에 빈을 반환한 이후에 스프링 컨테이너는 프로토타입 빈을 관리하지 않음
+  - 프로토타입 빈을 관리할 책임은 프로토타입을 주입받은 클라이언트에 있음
+    - 따라서 ```@PreDestroy``` 같은 종료 메서드가 호출되지 않음
+    - 종료 메서드에 대한 호출도 클라이언트가 직접 해야함
+
+
+
+### 프로토타입 스코프 - 싱글톤 빈과 함께 사용할 때의 문제점
+
+- 스프링 컨테이너에 프로토타입 스코프의 빈을 요청하면, 항상 새로운 객체 인스턴스를 생성해서 반환함
+
+  ```java
+  public class SingletonWithPrototypeTest1 {
+  
+      @Test
+      void prototypeFind() {
+          AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(PrototypeBean.class);
+          PrototypeBean prototypeBean1 = ac.getBean(PrototypeBean.class);
+          prototypeBean1.addCount();
+          assertThat(prototypeBean1.getCount()).isEqualTo(1);
+  
+          PrototypeBean prototypeBean2 = ac.getBean(PrototypeBean.class);
+          prototypeBean2.addCount();
+          assertThat(prototypeBean2.getCount()).isEqualTo(1);
+  
+      }
+  
+      @Scope("prototype")
+      static class PrototypeBean {
+          private int count = 0;
+  
+          public void addCount() {
+              count++;
+          }
+  
+          public int getCount() {
+              return count;
+          }
+  
+          @PostConstruct
+          public void init() {
+              System.out.println("PrototypeBean.init" + this);
+          }
+  
+          @PreDestroy
+          public void destroy() {
+              System.out.println("PrototypeBean.destroy");
+          }
+      }
+  }
+  ```
+
+- 그러나 싱글톤 빈과 함께 사용할 때는 의도한대로 잘 동작하지 않으므로 주의해야 함
+
+  ```java
+  public class SingletonWithPrototypeTest1 {
+  
+      @Test
+      void singletonClientUsePrototype() {
+          AnnotationConfigApplicationContext ac = new AnnotationConfigApplicationContext(ClientBean.class, PrototypeBean.class);
+  
+          ClientBean clientBean1 = ac.getBean(ClientBean.class);
+          int count1 = clientBean1.logic();
+          assertThat(count1).isEqualTo(1);
+  
+          ClientBean clientBean2 = ac.getBean(ClientBean.class);
+          int count2 = clientBean2.logic();
+          assertThat(count2).isEqualTo(2);
+      }
+  
+      @Scope("singleton")
+      static class ClientBean {
+          private final PrototypeBean prototypeBean; // 생성 시점에 주입되어 유지됨
+  
+          @Autowired
+          public ClientBean(PrototypeBean prototypeBean) {
+              this.prototypeBean = prototypeBean;
+          }
+  
+          public int logic() {
+              prototypeBean.addCount();
+              int count = prototypeBean.getCount();
+              return count;
+          }
+      }
+  
+  	...
+  }
+  ```
+
+  - ```clientBean``` 내부의 ```prototypeBean```은 생성 시점에 주입된 빈임
+    - 즉, 주입 시점에 스프링 컨테이너에 요청해서 프로토타입 빈이 새로 생성된 것이지, 사용할 때 마다 새로 생성되는 것이 아님
+    - 따라서 ```clientBean2```에서 ```logic()```을 호출하면, 이미 생성되어있는 프로토타입 빈의 ```count```가 증가됨
+
+- 스프링은 일반적으로 싱글톤 빈을 사용하므로, 싱글톤 빈이 프로토타입 빈을 사용하게 됨
+
+  - 싱글톤 빈은 생성 시점에만 의존 관계 주입을 받기 때문에, 프로토타입 빈이 새로 생성되기는 하지만, 생성된 프로토타입 빈이 싱글톤 빈과 함께 계속 유지되는 것이 문제임
+  - 프로토타입 빈의 사용 의도는 위와 같이 주입 시점에만 프로토타입 빈을 새로 생성하는 것이 아니라, 사용할 때마다 새로 생성하는 것임
