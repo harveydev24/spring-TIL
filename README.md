@@ -2341,6 +2341,226 @@ public class NetworkClient {
 
 
 
+## 웹 스코프
+
+- 웹 스코프는 웹 환경에서만 동작함
+- 프로토타입과는 다르게 스프링이 해당 스코프의 종료 시점까지 관리함
+  - 따라서 종료 메서드가 호출됨
+- 웹 스코프의 종류
+  - request
+    - HTTP 요청 하나가 들어오고, 나갈 때까지 유지되는 스코프
+    - 각각의 HTTP 요청마다 별도의 빈 인스턴스가 생성되고 관리됨
+  - session
+    - HTTP Session과 동일한 생명주기를 가지는 스코프
+  - application
+    - 블릿 컨텍스트(```ServletContext```)와 동일한 생명주기를 가지는 스코프
+  - websocket
+    - 웹 소켓과 동일한 생명주기를 가지는 스코프
+
+
+
+### request 스코프 예제
+
+- 웹 스코프는 웹 환경에서만 동작하므로, build.gradle에 라이브러리 추가
+
+  ```gradle
+  dependencies {
+  	...
+  	implementation 'org.springframework.boot:spring-boot-starter-web'
+  	...
+  }
+  ```
+
+  - 참고
+    - ```spring-boot-starter-web``` 라이브러리를 추가하면, 스프링 부트는 내장 톰켓 서버를 활용해서 웹 서버와 스프링을 함께 실행시킴
+    - 스프링 부트는 웹 라이브러리가 없으면 ```AnnotationConfigApplicationContext```를 기반으로 어플리케이션을 구동
+    - 웹 라이브러리가 추가되면, 웹과 관련된 추가 설정과 환경들이 필요하므로 ```AnnotationConfigServletWebServerApplicationContext```를 기반으로 어플리케이션을 구동
+
+- 동시에 HTTP 요청이 오면, 정확히 어떤 요청이 남긴 로그인지 구분하기 어려움
+
+  - 이럴때 request 스코프를 이용함
+
+  - UUID를 사용해서 HTTP 요청을 구분하고, requestURL 정보도 추가로 넣어서 어떤 URL을 요청해서 남은 로그인지 확인해보자
+
+    ```java
+    @Component
+    @Scope(value="request")
+    public class MyLogger {
+    
+        private String uuid;
+        private String requestURL;
+    
+        public void setRequestURL(String requestURL) {
+            this.requestURL = requestURL;
+        }
+    
+        public void log(String message) {
+            System.out.println("[" + uuid + "] " + "[" + requestURL + "] " + message);
+        }
+    
+        @PostConstruct
+        public void init() {
+            uuid = UUID.randomUUID().toString();
+            System.out.println("[" + uuid + "] " + "[" + requestURL + "] request scope init: " + this);
+        }
+    
+        @PreDestroy
+        public void close() {
+            System.out.println("[" + uuid + "] " + "[" + requestURL + "] request scope close: " + this);
+        }
+    }
+    ```
+
+    - request 빈은 HTTP 요청 당 하나씩 생성되고, HTTP 요청이 끝나는 시점에 소멸
+
+    - 빈이 생성되는 시점에 ```@PostConstruct``` 초기화 메서드를 이용해서 uuid를 생성하고 저장
+
+      - 이 빈은 HTTP 요청 당 하나씩 생성되므로, uuid를 저장해두면 다른 HTTP 요청과 구분 가능
+
+    - 빈이 소멸되는 시점에 ```@PreDestroy```를 사용해서 종료 메세지 남김
+
+    - ```requestURL```은 빈이 생성되는 시점에는 알 수 없으므로, 외부에서 ```setter```로 입력 받음
+
+      
+
+    ```java
+    @Controller
+    @RequiredArgsConstructor
+    public class LogDemoController {
+    
+        private final LogDemoService logDemoService;
+        private final MyLogger myLogger;
+    
+        @RequestMapping("log-demo")
+        @ResponseBody
+        public String logDemo(HttpServletRequest request) {
+            String requestURL = request.getRequestURL().toString();
+            myLogger.setRequestURL(requestURL);
+    
+            myLogger.log("controller test");
+            logDemoService.logic("testId");
+            return "OK";
+        }
+    }
+    ```
+
+    - 로거의 작동을 확인하는 컨트롤러
+
+    - ```HttpServletRequest```를 통해 요청 URL을 받음
+
+      - ```requestURL = http://localhost:8080/log-demo```
+      - 이 값을 myLogger에 저장
+
+    - 컨트롤러에서 ```controller test```라는 로그를 남김
+
+      
+
+    ```java
+    @Service
+    @RequiredArgsConstructor
+    public class LogDemoService {
+    
+        private final MyLogger myLogger;
+    
+        public void logic(String id) {
+            myLogger.log("service id = " + id);
+        }
+    }
+    ```
+
+    - 비즈니스 로직이 있는 서비스 계층
+    - request 스코프를 사용하지 않고 파라미터로 모든 정보를 서비스 계층에 넘기면 지저분함
+      - 또한, ```requestURL``` 처럼 웹과 관련된 정보가 웹과 관련없는 서비스 계층까지 넘어감
+      - 웹과 관련된 부분은 컨트롤러까지만 사용해야 함
+        - 서비스 계층은 웹 기술에 종속되지 않고, 가급적 순수하게 유지하는 것이 유지보수 관점에서 좋기 때문
+    - ```MyLogger``` 덕분에 모든 정보를 파라미터로 넘기지 않고, ```MyLogger```의 멤버변수에 저장해서 코드와 계층을 깔끔하게 유지할 수 있음
+    - 위와 같이 ```MyLogger, LogDemoController, LogDemoService```를 작성하고 스프링 어플리케이션을 실행시키면 오류 발생
+      - 스프링 어플리케이션을 실행하는 시점에 싱글톤 빈은 생성해서 주입이 가능하지만, request 스코프 빈인 ```MyLogger```는 생성되지 않기 때문
+      - ```MyLogger```는 HTTP 요청이 와야지 생성할 수 있음
+
+
+
+### request 스코프와 Provider
+
+```java
+@Controller
+@RequiredArgsConstructor
+public class LogDemoController {
+
+    private final LogDemoService logDemoService;
+    private final ObjectProvider<MyLogger> myLoggerProvider;
+
+    @RequestMapping("log-demo")
+    @ResponseBody
+    public String logDemo(HttpServletRequest request) {
+        String requestURL = request.getRequestURL().toString();
+        MyLogger myLogger = myLoggerProvider.getObject();
+        myLogger.setRequestURL(requestURL);
+
+        myLogger.log("controller test");
+        logDemoService.logic("testId");
+        return "OK";
+    }
+}
+```
+
+```java
+@Service
+@RequiredArgsConstructor
+public class LogDemoService {
+
+    private final ObjectProvider<MyLogger> myLoggerProvider;
+
+    public void logic(String id) {
+        MyLogger myLogger = myLoggerProvider.getObject();
+        myLogger.log("service id = " + id);
+    }
+}
+```
+
+- ```ObjectProvider```를 통해 ```ObjectProvider.getObject()```를 호출하는 시점까지 request 스코프 빈의 생성을 지연할 수 있음
+  - ```ObjectProvider.getObject()```를 호출하는 시점에는 HTTP 요청이 진행중이므로 request 스코프 빈의 생성이 정상 처리됨
+  - ```ObjectProvider.getObject()```를 ```LogDemoController```와 ```LogDemoService```에서 각각 한 번씩 따로 호출해도 같은 HTTP 요청이면, 같은 스프링 빈이 반환됨
+
+
+
+### request 스코프와 프록시
+
+```java
+@Component
+@Scope(value="request", proxyMode = ScopedProxyMode.TARGET_CLASS)
+public class MyLogger {
+	...
+}
+```
+
+- ```@Scope```에 ```proxyMode = ScopedProxyMode.TARGET_CLASS``` 옵션을 추가
+  - 적용 대상이 인터페이스이면 ```TARGET_CLASS```
+  - 적용 대상이 인터페이스이면 ```INTERFACES```
+  - 이 옵션을 추가하면, ```MyLogger```의 가짜 프록시 클래스를 만들어두고, HTTP request와 상관 없이 가짜 프록시 클래스를 다른 빈에 미리 주입해둠
+- 스프링 컨테이너는 CGLIB이라는 바이트 코드를 조작하는 라이브러리를 이용해서, ```MyLogger```를 상속받은 가짜 프록시 객체를 생성
+  - 출력해보면, ```MyLogger$$EnhancerBySpringCGLIB```이라는 클래스로 만들어진 객체가 대신 등록되어 있음
+  - ```ac.getBean("myLogger", MyLogger.class)```로 조회해도 프록시 객체가 조회됨
+  - 의존 관계 주입도 이 가짜 프록시 객체가 주입됨
+- 가짜 프록시 객체에는 요청이 들어오면 그때 내부에서 진짜 빈을 요청하는 위임 로직이 들어있음
+  - 가짜 프록시 객체는 진짜 ```myLogger```를 찾는 방법을 알고 있음
+  - 클라이언트가 ```myLogger.logic()```을 호출하면, 사실은 가짜 프록시 객체의 메서드를 호출
+  - 가짜 프록시 객체는 request 스코프의 진짜 ```myLogger.logic()```을 호출
+  - 가짜 프록시 객체는 원본 클래스를 상속 받았기 때문에, 이 객체를 사용하는 클라이언트 입장에서는 원본인지 아닌지 상관없이 동일하게 사용가능
+    - 다형성
+  - 가짜 프록시 객체는 실제 request 스코프와는 관계없음
+    - 내부에 단순한 위임 로직만 존재
+    - 싱글톤 처럼 동작
+- 프록시 객체 덕분에 클라이언트는 마치 싱글톤 빈을 사용하듯이 편리하게 request 스코프를 사용할 수 있음
+- Provider든, 프록시든 핵심 아이디어는 진짜 객체 조회를 꼭 필요한 시점까지 지연처리 한다는 점
+- 어노테이션 설정 변경만드로 원본 객체를 프록시 객체로 대체할 수 있음
+  - 다형성과 DI 컨테이너가 가진 큰 장점
+    - 클라이언트 코드를 전혀 손댈필요 없음
+  - 스프링의 AOP도 비슷한 원리
+- 웹 스코프가 아니어도 프록시는 사용할 수 있음
+
+
+
 
 
 ​	
