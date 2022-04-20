@@ -2231,3 +2231,116 @@ public class NetworkClient {
 
   - 싱글톤 빈은 생성 시점에만 의존 관계 주입을 받기 때문에, 프로토타입 빈이 새로 생성되기는 하지만, 생성된 프로토타입 빈이 싱글톤 빈과 함께 계속 유지되는 것이 문제임
   - 프로토타입 빈의 사용 의도는 위와 같이 주입 시점에만 프로토타입 빈을 새로 생성하는 것이 아니라, 사용할 때마다 새로 생성하는 것임
+
+
+
+### 프로토타입 스코프를 싱글톤 빈과 함께 사용할 때, ```Provider```를 사용하여 문제 해결
+
+- 무식한 방법으로, 싱글톤 빈이 프로토타입 빈을 사용할 때 마다, 스프링 컨테이너에 새로 요청할 수 있음
+
+  ```java
+      static class ClientBean {
+  
+          @Autowired
+          private ApplicationContext ac;
+  
+  
+          public int logic() {
+            	PrototypeBean prototypeBean = ac.getBean(PrototypeBean.class);
+              prototypeBean.addCount();
+              int count = prototypeBean.getCount();
+              return count;
+          }
+      }
+  ```
+
+  - 위의 코드를 실행해보면, ```ac.getBean(PrototypeBean.class)```를 통해 항상 새로운 프로토타입 빈이 생성됨
+  - 의존 관계를 외부에서 주입 받는게 아니라, 이렇게 직접 필요한 의존 관계를 찾는 것을 DL(Dependency Lookup, 의존 관계 조회)이라 함
+  - 그런데, ```ApplicationContext``` 전체를 주입받으면, 스프링 컨테이너에 종속적인 코드가 되고 단위 테스트도 어려워짐
+  - 스프링 컨테이너 대신, 딱 DL 정도의 기능만 제공하는 무언가가 필요함
+
+- ```ObjectFactory, ObjectProvider```
+
+  - ```ObjectProvider```는 ```ObjectFactory```에 기능이 추가된 것
+
+  - 지정한 빈을 컨테이너 대신 찾아주는 DL 기능을 제공함
+
+    ```java
+    @Scope("singleton")
+        static class ClientBean {
+    
+            @Autowired
+            private ObjectProvider<PrototypeBean> prototypeBeanProvider;
+    
+            public int logic() {
+                PrototypeBean prototypeBean = prototypeBeanProvider.getObject();
+                prototypeBean.addCount();
+                int count = prototypeBean.getCount();
+                return count;
+            }
+        }
+    ```
+
+    - ```prototypeBeanProvider.getObject()```를 통해서 항상 새로운 프로토타입 빈이 생성됨
+    - 스프링이 제공하는 기능을 사용하는 것이지만, 기능이 단순하여 단위 테스트를 만들어나 mock 코드를 만들기 쉬움
+    - ```ObjectProvider```는 딱 필요한 DL 정도의 기능만 제공
+    - ```ObjectProvider```는 스프링이 자동으로 만들어서 등록함
+
+  - JSR-330 ```Provider```
+
+    - ```java.inject.Provider```라는 JSR-330 자바 표준을 사용할 수도 있음
+
+    - build.gradle에 라이브러리 추가
+
+      ```gradle
+      dependencies {
+      	...
+      	implementation 'javax.inject:javax.inject:1'
+      	...
+      }
+      
+      ```
+
+    - ```ObjectProvider```와 마찬가지로 DL 기능 제공
+
+      ```java
+      @Scope("singleton")
+          static class ClientBean {
+      
+              @Autowired
+              private Provider<PrototypeBean> prototypeBeanProvider;
+      
+              public int logic() {
+                  PrototypeBean prototypeBean = prototypeBeanProvider.get();
+                  prototypeBean.addCount();
+                  int count = prototypeBean.getCount();
+                  return count;
+              }
+          }
+      ```
+
+      - ```prototypeBeanProvider.get()```를 통해 항상 새로운 프로토타입 빈 생성
+      - 자바 표준이고, 기능이 단순하여 단위 테스트를 만들거나 mock 코드 만들기 쉬움
+      - 딱 필요한 DL 정도의 기능만 제공
+        - ```get()``` 메서드 하나로 기능이 매우 단순
+
+    - 별도읭 라이브러리를 추가해야하므로 번거로움
+
+    - 자바 표준이므로 스프링이 아닌 다른 컨테이너에서도 사용 가능
+
+
+
+### 프로토타입 빈 정리
+
+- 프로토타입 빈은 매번 사용할 때마다 의존 관계 주입이 완료된 새로운 객체가 필요하면 사용
+- 그런데, 실무에서 웹 어플리케이션을 개발해보면, 싱글톤 빈으로 대부분의 문제를 해결할 수 있기 때문에 프로토타입 빈을 직접적으로 사용하는 경우는 매우 드묾
+- ```ObjectProvider```, JSR303 ```Provider```는 프로토타입 뿐만 아니라 DL이 필요한 경우에 언제든지 사용 가능
+- 스프링이 제공하는 ```@Lookup``` 어노테이션을 사용하는 방법도 있지만, 고려할 것이 많아 생략
+
+
+
+
+
+
+
+​	
